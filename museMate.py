@@ -4,7 +4,8 @@ from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+ dotenv_path = "hf.env"
+load_dotenv(dotenv_path)
 
 #Page Config 
 st.set_page_config(page_title="MuseMate 🎨🤖", page_icon="🤖", layout="centered")
@@ -55,4 +56,5 @@ if prompt := st.chat_input("Type your message... 💬"):
 
     # Add AI message to history
     st.session_state.chat_history.append(AIMessage(content=result.content))
+
 
