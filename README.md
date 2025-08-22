@@ -43,7 +43,13 @@ Whether you're seeking creative writing, casual chats, or idea brainstorming, Mu
 - **LLaMA 3.1-8B-Instruct**: Open-source large language model from Meta  
 
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+## How to Use (Hugging Face)
 
+1. Go to [Hugging Face Access Tokens](https://huggingface.co/settings/tokens) and create a **read or write token**.
+2. Open the `hf.env` file in your project.
+3. Replace `YOUR_HF_API_TOKEN` with your Hugging Face API token:
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 ## 🌐 Live Demo
 
 Click here to try MuseMate 👉 [Chat with MuseMate](https://musemate.streamlit.app/)
