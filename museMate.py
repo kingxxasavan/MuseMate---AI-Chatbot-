@@ -15,63 +15,140 @@ from pypdf import PdfReader
 from PIL import Image
 
 # --------------------
-# Page Config & Custom CSS
+# Page Config & Custom CSS (Glass Theme)
 # --------------------
 st.set_page_config(
     page_title="MuseMate 🎨🤖",
     page_icon="🤖",
-    layout="wide",  # Wider layout looks better on modern screens
+    layout="wide", 
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for Dark Mode and UI Polish
 st.markdown("""
 <style>
-    /* Main container adjustments */
-    .main .block-container {
-        padding-top: 1.5rem;
-        padding-bottom: 5rem;
-        max-width: 900px;
+    /* --- Global Background & Typography --- */
+    .stApp {
+        background: linear-gradient(135deg, #1a0b2e 0%, #2d1b4e 50%, #1a0b2e 100%);
+        background-attachment: fixed;
+        color: #ffffff;
     }
 
-    /* Hide default Streamlit footer/menu */
+    /* Hide defaults */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-
-    /* Custom Scrollbar */
-    ::-webkit-scrollbar {
-        width: 8px;
-    }
-    ::-webkit-scrollbar-track {
-        background: #1e1e1e; 
-    }
-    ::-webkit-scrollbar-thumb {
-        background: #4a4a4a; 
-        border-radius: 4px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-        background: #666; 
-    }
-
-    /* Chat Message Styling tweaks */
-    .stChatMessage {
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin-bottom: 1rem;
-    }
     
-    /* Make the status info smaller */
-    .small-font {
-        font-size: 0.85rem;
-        color: #aaa;
+    /* --- Glassmorphism Classes --- */
+    .glass-panel {
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 15px;
+        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
     }
 
-    /* Style the file uploader expander */
-    streamlit-expanderHeader {
-        font-size: 0.9rem;
-        font-weight: 600;
+    /* --- Sidebar Styling --- */
+    [data-testid="stSidebar"] {
+        background: rgba(0, 0, 0, 0.3);
+        backdrop-filter: blur(20px);
+        border-right: 1px solid rgba(255, 255, 255, 0.05);
+        padding-top: 20px;
     }
+
+    /* --- Chat Messages --- */
+    .stChatMessage {
+        background-color: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        margin-bottom: 1rem;
+        backdrop-filter: blur(5px);
+    }
+
+    /* --- Input Bar Styling (The "Glass Pill") --- */
+    .input-glass-container {
+        background: rgba(20, 10, 40, 0.6);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(168, 85, 247, 0.3); /* Purple border */
+        border-radius: 50px; /* Pill shape */
+        padding: 8px;
+        display: flex;
+        align-items: center;
+        box-shadow: 0 0 20px rgba(168, 85, 247, 0.2);
+        transition: all 0.3s ease;
+    }
+    .input-glass-container:focus-within {
+        border-color: rgba(168, 85, 247, 0.8);
+        box-shadow: 0 0 30px rgba(168, 85, 247, 0.4);
+    }
+
+    /* Align file uploader and chat input inside the glass container */
+    [data-testid="stFileUploader"] {
+        width: 50px; 
+    }
+    /* Hide the "Browse Files" text to make it just the button */
+    [data-testid="stFileUploader"] > section > label > span {
+        display: none;
+    }
+    [data-testid="stFileUploader"] > section > label {
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 50%;
+        cursor: pointer;
+        color: #d8b4fe;
+        font-size: 1.2rem;
+        margin: 0;
+    }
+    [data-testid="stFileUploader"] > section > label:hover {
+        background: rgba(168, 85, 247, 0.4);
+        color: white;
+    }
+
+    /* Chat Input inside the pill */
+    .stChatInput {
+        border: none;
+        background: transparent;
+        box-shadow: none;
+        padding: 0;
+    }
+    .stChatInput > div {
+        background: transparent;
+    }
+    .stChatInput textarea {
+        color: white;
+    }
+
+    /* Buttons */
+    .stButton > button {
+        background: rgba(168, 85, 247, 0.2);
+        border: 1px solid rgba(168, 85, 247, 0.4);
+        color: white;
+        border-radius: 8px;
+        transition: 0.3s;
+    }
+    .stButton > button:hover {
+        background: rgba(168, 85, 247, 0.6);
+        box-shadow: 0 0 10px rgba(168, 85, 247, 0.5);
+    }
+
+    /* Info/Success boxes */
+    .stAlert {
+        background: rgba(16, 185, 129, 0.1) !important;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        color: #6ee7b7;
+        border-radius: 10px;
+        backdrop-filter: blur(5px);
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+    ::-webkit-scrollbar-thumb { background: rgba(168, 85, 247, 0.5); border-radius: 3px; }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -311,51 +388,49 @@ except Exception as e:
 
 
 # --------------------
-# Sidebar: Improved
+# Sidebar
 # --------------------
 with st.sidebar:
-    # Header
-    st.markdown("### MuseMate 🎨🤖")
+    st.markdown("### 🎨 MuseMate")
+    st.markdown("<div style='font-size:0.8rem; color:#d8b4fe;'>Create. Analyze. Dream.</div>", unsafe_allow_html=True)
     st.markdown("---")
     
-    # Controls
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("➕ New Chat", use_container_width=True, type="primary"):
+        if st.button("➕ New Chat", use_container_width=True):
             new_chat()
             st.rerun()
     with col2:
         st.session_state.autosave = st.toggle("Auto-save", value=st.session_state.autosave)
 
-    st.markdown("### History")
+    st.markdown("### 💬 History")
     
     chats = list_chats_newest_first()
     
-    # Chat List Container
+    # Glass style chat list
     with st.container():
         for cid, name, updated_at in chats:
             is_current = (cid == st.session_state.chat_id)
             
-            # Logic for cleaner labels
+            # Style for active vs inactive
             if is_current:
-                label = f"**{name}** ✅"
-                bg_color = "rgba(255, 255, 255, 0.1)"
+                label = f"✨ {name}"
+                style = "background: rgba(168, 85, 247, 0.3); border: 1px solid rgba(168, 85, 247, 0.5);"
             else:
-                label = f"{name}"
-                bg_color = "transparent"
+                label = name
+                style = "background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);"
             
-            # Create a container for each chat to apply custom styles
+            # Custom HTML for chat item
             c = st.container()
             c.markdown(
                 f"""
-                <div style="background-color: {bg_color}; padding: 8px; border-radius: 6px; margin-bottom: 5px;">
-                    {label}
+                <div style='{style} padding: 10px; border-radius: 8px; margin-bottom: 8px; color: white;'>
+                    <strong>{label}</strong>
                 </div>
                 """, 
                 unsafe_allow_html=True
             )
             
-            # Invisible button overlay to capture clicks
             if c.button(label, key=f"chatbtn_{cid}", use_container_width=True):
                 if cid != st.session_state.chat_id:
                     chat_name, history, context_pack = load_chat(cid)
@@ -367,17 +442,24 @@ with st.sidebar:
                     st.rerun()
                     
     st.divider()
-    st.caption("MuseMate keeps your context attached to specific chats.")
+    st.caption("Powered by Gemini & OpenRouter")
 
 
 # --------------------
 # Main Chat Area
 # --------------------
 
-# Title
-st.markdown(f"<h2 style='text-align: center;'>{st.session_state.chat_name}</h2>", unsafe_allow_html=True)
+# Title with glass effect
+st.markdown(
+    f"""
+    <div class="glass-panel" style="padding: 15px; text-align: center; margin-bottom: 20px;">
+        <h2 style="margin:0; color:white;">{st.session_state.chat_name}</h2>
+    </div>
+    """, 
+    unsafe_allow_html=True
+)
 
-# Display Chat History
+# Display History
 for msg in st.session_state.chat_history:
     if isinstance(msg, HumanMessage):
         with st.chat_message("user", avatar="👤"):
@@ -386,9 +468,6 @@ for msg in st.session_state.chat_history:
         with st.chat_message("assistant", avatar="🤖"):
             st.markdown(msg.content)
 
-# --------------------
-# Input & Tools Area (Bottom)
-# --------------------
 
 # Helper to build messages
 def build_messages_for_model():
@@ -407,115 +486,131 @@ def build_messages_for_model():
         return [ctx_msg] + history
     return history
 
-# Container for inputs at the bottom
+
+# --------------------
+# Bottom Input Area (Glass Pill)
+# --------------------
+# We wrap the input in a div to style it like a pill
+st.markdown("""
+    <div style="position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 800px; z-index: 999;">
+""", unsafe_allow_html=True)
+
+# Container for inputs
 with st.container():
-    
-    # 1. Context Indicator (Top of input area)
+    # 1. Context Indicator (Inside the Glass Pill area)
     if st.session_state.context_pack:
-        # Calculate rough number of files attached based on simple parsing of context string
-        # (Just a heuristic for visual feedback)
         file_count = st.session_state.context_pack.count("[File:") + st.session_state.context_pack.count("[Image:")
-        st.info(f"📎 Context Active: {file_count} item(s) attached to this chat.", icon="✅")
-    
-    # 2. Expander for Tools (Uploads)
-    with st.expander("🛠️ Tools & Attachments", expanded=False):
-        col_a, col_b = st.columns([2, 1])
-        
-        with col_a:
+        # Glass alert box above input
+        st.info(f"📎 Context: {file_count} file(s) attached.", icon="✅")
+
+    # 2. The Glass Pill Input Bar
+    with st.container():
+        col_upload, col_chat = st.columns([0.5, 10], gap="small")
+
+        with col_upload:
+            # The "Plus" icon is actually the file uploader button styled by CSS
+            # label="➕" gives it the icon
             uploads = st.file_uploader(
-                "Add files to context",
+                "➕", 
                 type=["pdf", "txt", "docx", "png", "jpg", "jpeg", "webp"],
                 accept_multiple_files=True,
-                label_visibility="collapsed",
-                key="main_uploader"
+                label_visibility="visible"
             )
             
-        with col_b:
-            # Manual clear button
-            if st.button("🗑️ Clear All", use_container_width=True):
+            # Clear context button (tiny, next to plus)
+            if st.button("✖", key="clear_ctx", help="Clear Context"):
                 st.session_state.context_pack = ""
                 st.session_state.uploaded_fingerprints = set()
                 st.toast("Context cleared.")
                 st.rerun()
 
-        # Process uploads logic
-        if uploads:
-            added_any = False
-            for f in uploads:
-                name = f.name
-                file_bytes = f.getvalue()
-                ext = name.lower().split(".")[-1]
-                fp = fingerprint_file(name, file_bytes)
+        with col_chat:
+            # Standard chat input
+            prompt = st.chat_input("Ask MuseMate anything...")
 
-                if fp in st.session_state.uploaded_fingerprints:
-                    continue
-                st.session_state.uploaded_fingerprints.add(fp)
+st.markdown("</div>", unsafe_allow_html=True)
 
-                # Handle Images
-                if ext in ("png", "jpg", "jpeg", "webp"):
-                    try:
-                        img = Image.open(BytesIO(file_bytes))
-                        st.image(img, caption=f"Attached: {name}", width=200)
-                    except Exception:
-                        pass
+# 3. Logic for Chatting
+if prompt:
+    st.session_state.chat_history.append(HumanMessage(content=prompt))
 
-                    try:
-                        mime = f.type or "image/png"
-                        analysis = analyze_image_with_gemini(primary_model, file_bytes, mime)
-                        if analysis:
-                            st.session_state.context_pack += f"\n\n[Image: {name}]\n{analysis}"
-                            added_any = True
-                    except Exception as e:
-                        st.warning(f"Image analysis failed: {e}")
+    with st.chat_message("user", avatar="👤"):
+        st.markdown(prompt)
 
-                # Handle Docs
-                else:
-                    extracted = ""
-                    try:
-                        if ext == "txt":
-                            extracted = extract_text_from_txt(file_bytes)
-                        elif ext == "docx":
-                            extracted = extract_text_from_docx(file_bytes)
-                        elif ext == "pdf":
-                            extracted = extract_text_from_pdf(file_bytes)
-                    except Exception as e:
-                        st.warning(f"Read error for {name}: {e}")
+    with st.chat_message("assistant", avatar="🤖"):
+        with st.spinner("Thinking..."):
+            model_messages = build_messages_for_model()
+            result = invoke_with_fallback(primary_model, fallback_model_obj, model_messages)
+            st.markdown(result.content)
 
-                    extracted = (extracted or "").strip()
-                    if extracted:
-                        MAX_CHARS = 20000
-                        if len(extracted) > MAX_CHARS:
-                            extracted = extracted[:MAX_CHARS] + "\n\n[Truncated]"
-                        st.session_state.context_pack += f"\n\n[File: {name}]\n{extracted}"
-                        added_any = True
+    st.session_state.chat_history.append(AIMessage(content=result.content))
 
-            if added_any:
-                st.toast("Files processed and added to context! ✅")
-                if st.session_state.autosave:
-                    save_chat(
-                        st.session_state.chat_id,
-                        st.session_state.chat_name,
-                        st.session_state.chat_history,
-                        st.session_state.context_pack,
-                    )
-                # Rerun to update the context indicator immediately
-                st.rerun()
+    if st.session_state.autosave:
+        save_chat(
+            st.session_state.chat_id,
+            st.session_state.chat_name,
+            st.session_state.chat_history,
+            st.session_state.context_pack,
+        )
 
-    # 3. Chat Input
-    if prompt := st.chat_input("Message MuseMate... 💬"):
-        st.session_state.chat_history.append(HumanMessage(content=prompt))
+# 4. Logic for Uploading
+if 'uploads' in locals() and uploads:
+    added_any = False
+    for f in uploads:
+        name = f.name
+        file_bytes = f.getvalue()
+        ext = name.lower().split(".")[-1]
+        fp = fingerprint_file(name, file_bytes)
 
-        with st.chat_message("user", avatar="👤"):
-            st.markdown(prompt)
+        if fp in st.session_state.uploaded_fingerprints:
+            continue
+        st.session_state.uploaded_fingerprints.add(fp)
 
-        with st.chat_message("assistant", avatar="🤖"):
-            with st.spinner("Thinking..."):
-                model_messages = build_messages_for_model()
-                result = invoke_with_fallback(primary_model, fallback_model_obj, model_messages)
-                st.markdown(result.content)
+        # Handle Images
+        if ext in ("png", "jpg", "jpeg", "webp"):
+            try:
+                img = Image.open(BytesIO(file_bytes))
+                # Display preview
+                st.markdown(
+                    f"<div style='text-align:center; margin-bottom:10px;'>🖼️ <b>{name}</b> attached</div>", 
+                    unsafe_allow_html=True
+                )
+                st.image(img, width=100, use_container_width=True)
+            except Exception:
+                pass
 
-        st.session_state.chat_history.append(AIMessage(content=result.content))
+            try:
+                mime = f.type or "image/png"
+                analysis = analyze_image_with_gemini(primary_model, file_bytes, mime)
+                if analysis:
+                    st.session_state.context_pack += f"\n\n[Image: {name}]\n{analysis}"
+                    added_any = True
+            except Exception as e:
+                st.warning(f"Image analysis failed: {e}")
 
+        # Handle Docs
+        else:
+            extracted = ""
+            try:
+                if ext == "txt":
+                    extracted = extract_text_from_txt(file_bytes)
+                elif ext == "docx":
+                    extracted = extract_text_from_docx(file_bytes)
+                elif ext == "pdf":
+                    extracted = extract_text_from_pdf(file_bytes)
+            except Exception as e:
+                st.warning(f"Read error for {name}: {e}")
+
+            extracted = (extracted or "").strip()
+            if extracted:
+                MAX_CHARS = 20000
+                if len(extracted) > MAX_CHARS:
+                    extracted = extracted[:MAX_CHARS] + "\n\n[Truncated]"
+                st.session_state.context_pack += f"\n\n[File: {name}]\n{extracted}"
+                added_any = True
+
+    if added_any:
+        st.toast("Files processed! ✨")
         if st.session_state.autosave:
             save_chat(
                 st.session_state.chat_id,
@@ -523,3 +618,4 @@ with st.container():
                 st.session_state.chat_history,
                 st.session_state.context_pack,
             )
+        st.rerun()
