@@ -1,26 +1,13 @@
+# UI
+streamlit>=1.32.0
+
 # LangChain Core
-langchain
-langchain-core
+langchain>=0.2.0
+langchain-core>=0.2.0
 
-# OpenAI Integration
-langchain-openai
-openai
+# LLM Providers
+langchain-google-genai>=1.0.0   # Gemini 2.5 Flash
+langchain-openai>=0.1.8         # OpenRouter fallback
 
-# Anthropic Integration
-langchain-anthropic
-
-# Google Gemini (PaLM) Integration
-langchain-google-genai
-google-generativeai
-
-# Hugging Face Integration
-langchain-huggingface
-transformers
-huggingface-hub
-
-# Environment Variable Management
-python-dotenv
-
-# Machine Learning Utilities
-numpy
-scikit-learn
+# Env management
+python-dotenv>=1.0.1
