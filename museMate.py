@@ -15,7 +15,7 @@ from pypdf import PdfReader
 from PIL import Image
 
 # --------------------
-# Page Config & Custom CSS (Glass Theme)
+# Page Config & CSS
 # --------------------
 st.set_page_config(
     page_title="MuseMate 🎨🤖",
@@ -26,9 +26,9 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    /* --- Global Background & Typography --- */
+    /* --- Global Background --- */
     .stApp {
-        background: linear-gradient(135deg, #1a0b2e 0%, #2d1b4e 50%, #1a0b2e 100%);
+        background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
         background-attachment: fixed;
         color: #ffffff;
     }
@@ -37,58 +37,46 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    
-    /* --- Glassmorphism Classes --- */
-    .glass-panel {
-        background: rgba(255, 255, 255, 0.05);
-        backdrop-filter: blur(16px);
-        -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 15px;
-        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
-    }
 
-    /* --- Sidebar Styling --- */
+    /* --- Sidebar Glass --- */
     [data-testid="stSidebar"] {
-        background: rgba(0, 0, 0, 0.3);
+        background: rgba(20, 20, 40, 0.6);
         backdrop-filter: blur(20px);
-        border-right: 1px solid rgba(255, 255, 255, 0.05);
-        padding-top: 20px;
+        border-right: 1px solid rgba(255, 255, 255, 0.08);
     }
 
-    /* --- Chat Messages --- */
+    /* --- Chat Messages Glass --- */
     .stChatMessage {
-        background-color: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.05);
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 12px;
         margin-bottom: 1rem;
         backdrop-filter: blur(5px);
     }
 
-    /* --- Input Bar Styling (The "Glass Pill") --- */
-    .input-glass-container {
-        background: rgba(20, 10, 40, 0.6);
-        backdrop-filter: blur(20px);
-        border: 1px solid rgba(168, 85, 247, 0.3); /* Purple border */
-        border-radius: 50px; /* Pill shape */
-        padding: 8px;
+    /* --- The Glass Pill Input Container --- */
+    .glass-pill-container {
+        background: rgba(30, 10, 60, 0.7);
+        border: 1px solid rgba(168, 85, 247, 0.3); /* Purple glow */
+        border-radius: 50px;
+        padding: 5px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
         display: flex;
         align-items: center;
-        box-shadow: 0 0 20px rgba(168, 85, 247, 0.2);
-        transition: all 0.3s ease;
+        transition: border-color 0.3s;
     }
-    .input-glass-container:focus-within {
+    .glass-pill-container:focus-within {
         border-color: rgba(168, 85, 247, 0.8);
-        box-shadow: 0 0 30px rgba(168, 85, 247, 0.4);
+        box-shadow: 0 0 15px rgba(168, 85, 247, 0.3);
     }
 
-    /* Align file uploader and chat input inside the glass container */
+    /* --- File Uploader Styling (The + Icon) --- */
     [data-testid="stFileUploader"] {
-        width: 50px; 
+        flex: 0 0 auto; /* Don't grow */
     }
-    /* Hide the "Browse Files" text to make it just the button */
+    /* Hide the 'Browse Files' text and box */
     [data-testid="stFileUploader"] > section > label > span {
-        display: none;
+        display: none !important;
     }
     [data-testid="stFileUploader"] > section > label {
         width: 40px;
@@ -96,58 +84,55 @@ st.markdown("""
         display: flex;
         align-items: center;
         justify-content: center;
-        background: rgba(255, 255, 255, 0.1);
+        background: rgba(168, 85, 247, 0.2);
         border-radius: 50%;
-        cursor: pointer;
         color: #d8b4fe;
-        font-size: 1.2rem;
-        margin: 0;
-    }
-    [data-testid="stFileUploader"] > section > label:hover {
-        background: rgba(168, 85, 247, 0.4);
-        color: white;
-    }
-
-    /* Chat Input inside the pill */
-    .stChatInput {
+        font-size: 1.5rem;
+        cursor: pointer;
         border: none;
-        background: transparent;
-        box-shadow: none;
+        margin: 0;
         padding: 0;
     }
-    .stChatInput > div {
-        background: transparent;
-    }
-    .stChatInput textarea {
+    [data-testid="stFileUploader"] > section > label:hover {
+        background: rgba(168, 85, 247, 0.5);
         color: white;
     }
 
-    /* Buttons */
+    /* --- Chat Input Styling (Transparent to blend) --- */
+    .stChatInput {
+        border: none !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+    }
+    .stChatInput > div {
+        background: transparent !important;
+        box-shadow: none !important;
+    }
+    /* Text styling */
+    .stChatInput textarea {
+        color: white !important;
+        background: transparent !important;
+    }
+    .stChatInput textarea::placeholder {
+        color: rgba(255, 255, 255, 0.5);
+    }
+
+    /* --- Buttons --- */
     .stButton > button {
         background: rgba(168, 85, 247, 0.2);
         border: 1px solid rgba(168, 85, 247, 0.4);
         color: white;
         border-radius: 8px;
-        transition: 0.3s;
     }
     .stButton > button:hover {
-        background: rgba(168, 85, 247, 0.6);
-        box-shadow: 0 0 10px rgba(168, 85, 247, 0.5);
-    }
-
-    /* Info/Success boxes */
-    .stAlert {
-        background: rgba(16, 185, 129, 0.1) !important;
-        border: 1px solid rgba(16, 185, 129, 0.3);
-        color: #6ee7b7;
-        border-radius: 10px;
-        backdrop-filter: blur(5px);
+        background: rgba(168, 85, 247, 0.5);
     }
 
     /* Scrollbar */
-    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar { width: 8px; }
     ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
-    ::-webkit-scrollbar-thumb { background: rgba(168, 85, 247, 0.5); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb { background: rgba(168, 85, 247, 0.5); border-radius: 4px; }
 
 </style>
 """, unsafe_allow_html=True)
@@ -407,12 +392,10 @@ with st.sidebar:
     
     chats = list_chats_newest_first()
     
-    # Glass style chat list
     with st.container():
         for cid, name, updated_at in chats:
             is_current = (cid == st.session_state.chat_id)
             
-            # Style for active vs inactive
             if is_current:
                 label = f"✨ {name}"
                 style = "background: rgba(168, 85, 247, 0.3); border: 1px solid rgba(168, 85, 247, 0.5);"
@@ -420,7 +403,6 @@ with st.sidebar:
                 label = name
                 style = "background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);"
             
-            # Custom HTML for chat item
             c = st.container()
             c.markdown(
                 f"""
@@ -449,10 +431,9 @@ with st.sidebar:
 # Main Chat Area
 # --------------------
 
-# Title with glass effect
 st.markdown(
     f"""
-    <div class="glass-panel" style="padding: 15px; text-align: center; margin-bottom: 20px;">
+    <div style="background: rgba(255, 255, 255, 0.05); padding: 15px; text-align: center; border-radius: 15px; margin-bottom: 20px; backdrop-filter: blur(5px); border: 1px solid rgba(255,255,255,0.1);">
         <h2 style="margin:0; color:white;">{st.session_state.chat_name}</h2>
     </div>
     """, 
@@ -467,7 +448,6 @@ for msg in st.session_state.chat_history:
     elif isinstance(msg, AIMessage):
         with st.chat_message("assistant", avatar="🤖"):
             st.markdown(msg.content)
-
 
 # Helper to build messages
 def build_messages_for_model():
@@ -488,49 +468,51 @@ def build_messages_for_model():
 
 
 # --------------------
-# Bottom Input Area (Glass Pill)
+# Input Area (Fixed Layout)
 # --------------------
-# We wrap the input in a div to style it like a pill
-st.markdown("""
-    <div style="position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 800px; z-index: 999;">
-""", unsafe_allow_html=True)
+# Context Indicator
+if st.session_state.context_pack:
+    file_count = st.session_state.context_pack.count("[File:") + st.session_state.context_pack.count("[Image:")
+    st.info(f"📎 Context: {file_count} file(s) attached.", icon="✅")
 
-# Container for inputs
-with st.container():
-    # 1. Context Indicator (Inside the Glass Pill area)
-    if st.session_state.context_pack:
-        file_count = st.session_state.context_pack.count("[File:") + st.session_state.context_pack.count("[Image:")
-        # Glass alert box above input
-        st.info(f"📎 Context: {file_count} file(s) attached.", icon="✅")
+# The Glass Pill Container (Using HTML wrapper around the columns)
+st.markdown(
+    """
+    <div class="glass-pill-container" style="margin-bottom: 20px;">
+    """, 
+    unsafe_allow_html=True
+)
 
-    # 2. The Glass Pill Input Bar
-    with st.container():
-        col_upload, col_chat = st.columns([0.5, 10], gap="small")
+col_upload, col_chat = st.columns([0.5, 10], gap="small")
 
-        with col_upload:
-            # The "Plus" icon is actually the file uploader button styled by CSS
-            # label="➕" gives it the icon
-            uploads = st.file_uploader(
-                "➕", 
-                type=["pdf", "txt", "docx", "png", "jpg", "jpeg", "webp"],
-                accept_multiple_files=True,
-                label_visibility="visible"
-            )
-            
-            # Clear context button (tiny, next to plus)
-            if st.button("✖", key="clear_ctx", help="Clear Context"):
-                st.session_state.context_pack = ""
-                st.session_state.uploaded_fingerprints = set()
-                st.toast("Context cleared.")
-                st.rerun()
+with col_upload:
+    # The "Plus" icon uploader
+    uploads = st.file_uploader(
+        "➕", 
+        type=["pdf", "txt", "docx", "png", "jpg", "jpeg", "webp"],
+        accept_multiple_files=True,
+        label_visibility="visible"
+    )
+    
+    # Clear button (Small X next to +)
+    if st.button("✖", key="clear_ctx", help="Clear Context"):
+        st.session_state.context_pack = ""
+        st.session_state.uploaded_fingerprints = set()
+        st.toast("Context cleared.")
+        st.rerun()
 
-        with col_chat:
-            # Standard chat input
-            prompt = st.chat_input("Ask MuseMate anything...")
+with col_chat:
+    # The Text Input
+    prompt = st.chat_input("Ask MuseMate anything...")
 
 st.markdown("</div>", unsafe_allow_html=True)
 
-# 3. Logic for Chatting
+
+# --------------------
+# Logic
+# --------------------
+
+# 1. Chatting
 if prompt:
     st.session_state.chat_history.append(HumanMessage(content=prompt))
 
@@ -553,7 +535,7 @@ if prompt:
             st.session_state.context_pack,
         )
 
-# 4. Logic for Uploading
+# 2. Uploading
 if 'uploads' in locals() and uploads:
     added_any = False
     for f in uploads:
@@ -566,11 +548,10 @@ if 'uploads' in locals() and uploads:
             continue
         st.session_state.uploaded_fingerprints.add(fp)
 
-        # Handle Images
+        # Images
         if ext in ("png", "jpg", "jpeg", "webp"):
             try:
                 img = Image.open(BytesIO(file_bytes))
-                # Display preview
                 st.markdown(
                     f"<div style='text-align:center; margin-bottom:10px;'>🖼️ <b>{name}</b> attached</div>", 
                     unsafe_allow_html=True
@@ -588,7 +569,7 @@ if 'uploads' in locals() and uploads:
             except Exception as e:
                 st.warning(f"Image analysis failed: {e}")
 
-        # Handle Docs
+        # Docs
         else:
             extracted = ""
             try:
