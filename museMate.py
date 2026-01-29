@@ -2,6 +2,7 @@ import os
 import json
 import time
 import base64
+import hashlib
 from io import BytesIO
 from datetime import datetime
 
@@ -10,7 +11,6 @@ from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 
-# For file parsing (add to requirements)
 from docx import Document
 from pypdf import PdfReader
 from PIL import Image
@@ -37,7 +37,7 @@ def ensure_dirs():
 def load_index():
     ensure_dirs()
     if not os.path.exists(INDEX_PATH):
-        return {"next_chat_num": 1, "chats": {}}  # chats: {chat_id: {"name":..., "updated_at":...}}
+        return {"next_chat_num": 1, "chats": {}}
     try:
         with open(INDEX_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -49,6 +49,10 @@ def save_index(index_data):
     ensure_dirs()
     with open(INDEX_PATH, "w", encoding="utf-8") as f:
         json.dump(index_data, f, ensure_ascii=False, indent=2)
+
+
+def chat_path(chat_id: str):
+    return os.path.join(CHAT_DIR, f"{chat_id}.json")
 
 
 def msg_to_dict(m):
@@ -71,10 +75,6 @@ def dict_to_msg(d):
     if t == "ai":
         return AIMessage(content=c)
     return AIMessage(content=c)
-
-
-def chat_path(chat_id: str):
-    return os.path.join(CHAT_DIR, f"{chat_id}.json")
 
 
 def save_chat(chat_id: str, display_name: str, history, context_pack: str):
@@ -108,25 +108,29 @@ def list_chats_newest_first():
     items = []
     for cid, meta in idx.get("chats", {}).items():
         items.append((cid, meta.get("name", "Chat"), meta.get("updated_at", "")))
-    items.sort(key=lambda x: x[2], reverse=True)  # newest first
+    items.sort(key=lambda x: x[2], reverse=True)
     return items
+
+
+DEFAULT_SYSTEM = "You are MuseMate 🎨🤖 a friendly, playful, and creative AI assistant."
 
 
 def new_chat():
     idx = load_index()
     n = idx.get("next_chat_num", 1)
-
-    display_name = f"Chat {n}"
     idx["next_chat_num"] = n + 1
     save_index(idx)
 
-    chat_id = f"chat_{n}"  # simple + stable
+    display_name = f"Chat {n}"
+    chat_id = f"chat_{n}"
 
-    DEFAULT_SYSTEM = "You are MuseMate 🎨🤖 a friendly, playful, and creative AI assistant."
     st.session_state.chat_id = chat_id
     st.session_state.chat_name = display_name
     st.session_state.chat_history = [SystemMessage(content=DEFAULT_SYSTEM)]
-    st.session_state.context_pack = ""  # extracted doc text + image analysis summaries
+
+    # Persisted “attachments context” for this chat
+    st.session_state.context_pack = ""
+    st.session_state.uploaded_fingerprints = set()
 
     save_chat(chat_id, display_name, st.session_state.chat_history, st.session_state.context_pack)
 
@@ -179,23 +183,17 @@ def invoke_with_fallback(primary_llm, fallback_llm, messages):
 
 
 # --------------------
-# File extraction
+# Upload extraction
 # --------------------
 def extract_text_from_txt(file_bytes: bytes) -> str:
-    try:
-        return file_bytes.decode("utf-8", errors="ignore")
-    except Exception:
-        return ""
+    return file_bytes.decode("utf-8", errors="ignore").strip()
 
 
 def extract_text_from_docx(file_bytes: bytes) -> str:
     bio = BytesIO(file_bytes)
     doc = Document(bio)
-    parts = []
-    for p in doc.paragraphs:
-        if p.text.strip():
-            parts.append(p.text.strip())
-    return "\n".join(parts)
+    parts = [p.text.strip() for p in doc.paragraphs if p.text and p.text.strip()]
+    return "\n".join(parts).strip()
 
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:
@@ -203,11 +201,10 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
     reader = PdfReader(bio)
     parts = []
     for page in reader.pages:
-        t = page.extract_text() or ""
-        t = t.strip()
+        t = (page.extract_text() or "").strip()
         if t:
             parts.append(t)
-    return "\n\n".join(parts)
+    return "\n\n".join(parts).strip()
 
 
 def image_to_data_url(file_bytes: bytes, mime: str) -> str:
@@ -216,16 +213,10 @@ def image_to_data_url(file_bytes: bytes, mime: str) -> str:
 
 
 def analyze_image_with_gemini(primary_llm, file_bytes: bytes, mime: str) -> str:
-    """
-    Uses Gemini multimodal via LangChain.
-    If your installed versions don’t support this message format, it will fail gracefully.
-    """
     data_url = image_to_data_url(file_bytes, mime)
-
-    # OpenAI-style multimodal content often works in modern LC wrappers
     msg = HumanMessage(
         content=[
-            {"type": "text", "text": "Analyze this image in detail. Describe what's in it and extract any readable text."},
+            {"type": "text", "text": "Analyze this image. Describe what's in it and extract any readable text."},
             {"type": "image_url", "image_url": {"url": data_url}},
         ]
     )
@@ -233,11 +224,49 @@ def analyze_image_with_gemini(primary_llm, file_bytes: bytes, mime: str) -> str:
     return (result.content or "").strip()
 
 
+def fingerprint_file(name: str, file_bytes: bytes) -> str:
+    h = hashlib.sha256()
+    h.update(name.encode("utf-8", errors="ignore"))
+    h.update(file_bytes[:200000])  # enough to be stable + fast
+    return h.hexdigest()
+
+
 # --------------------
-# Ensure chat session exists
+# Explicit clear detection (ONLY if user directly asks)
+# --------------------
+CLEAR_PHRASES = {
+    "clear attachments",
+    "clear uploads",
+    "forget uploads",
+    "forget the uploads",
+    "forget attachments",
+    "remove uploaded files",
+    "remove uploads",
+    "delete uploads",
+    "/clear uploads",
+    "/clear attachments",
+}
+
+
+def user_requested_clear(text: str) -> bool:
+    t = (text or "").strip().lower()
+    return t in CLEAR_PHRASES
+
+
+# --------------------
+# Session init
 # --------------------
 if "chat_id" not in st.session_state:
     new_chat()
+
+if "autosave" not in st.session_state:
+    st.session_state.autosave = True
+
+if "uploaded_fingerprints" not in st.session_state:
+    st.session_state.uploaded_fingerprints = set()
+
+if "context_pack" not in st.session_state:
+    st.session_state.context_pack = ""
 
 
 # --------------------
@@ -252,116 +281,48 @@ except Exception as e:
 
 
 # --------------------
-# Sidebar: Chat Manager + Uploads
+# Sidebar: stacked chat buttons
 # --------------------
 with st.sidebar:
     st.subheader("💬 Chats")
 
-    chats = list_chats_newest_first()
-    chat_ids = [c[0] for c in chats]
-    chat_labels = [f"{c[1]}  •  {c[2].split('T')[0] if c[2] else ''}".strip() for c in chats]
-
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("➕ New chat"):
+    top_row = st.columns([1, 1])
+    with top_row[0]:
+        if st.button("➕ New", use_container_width=True):
             new_chat()
             st.rerun()
-
-    with c2:
-        st.session_state.autosave = st.toggle("Auto-save", value=st.session_state.get("autosave", True))
-
-    # Load selected chat
-    if chat_ids:
-        # find current index
-        try:
-            current_idx = chat_ids.index(st.session_state.chat_id)
-        except ValueError:
-            current_idx = 0
-
-        selected_idx = st.selectbox("Select chat", options=list(range(len(chat_ids))), index=current_idx, format_func=lambda i: chat_labels[i])
-        if st.button("📂 Load"):
-            cid = chat_ids[selected_idx]
-            name, history, context_pack = load_chat(cid)
-            st.session_state.chat_id = cid
-            st.session_state.chat_name = name
-            st.session_state.chat_history = history
-            st.session_state.context_pack = context_pack or ""
-            st.rerun()
+    with top_row[1]:
+        st.session_state.autosave = st.toggle("Auto-save", value=st.session_state.autosave)
 
     st.divider()
 
-    st.subheader("📎 Files & Images")
-    uploads = st.file_uploader(
-        "Upload PDF/TXT/DOCX or images (PNG/JPG/WebP)",
-        type=["pdf", "txt", "docx", "png", "jpg", "jpeg", "webp"],
-        accept_multiple_files=True,
-    )
+    chats = list_chats_newest_first()
 
-    if st.button("🧼 Clear uploaded context"):
-        st.session_state.context_pack = ""
-        # save immediately
-        save_chat(st.session_state.chat_id, st.session_state.chat_name, st.session_state.chat_history, st.session_state.context_pack)
-        st.success("Cleared.")
-        st.rerun()
+    # Stacked clickable chats (newest at top)
+    for cid, name, updated_at in chats:
+        is_current = (cid == st.session_state.chat_id)
+        label = f"✅ {name}" if is_current else name
 
-    if uploads:
-        added_any = False
-        for f in uploads:
-            name = f.name
-            bytes_data = f.getvalue()
-            ext = name.lower().split(".")[-1]
+        if st.button(label, key=f"chatbtn_{cid}", use_container_width=True):
+            if cid != st.session_state.chat_id:
+                chat_name, history, context_pack = load_chat(cid)
+                st.session_state.chat_id = cid
+                st.session_state.chat_name = chat_name
+                st.session_state.chat_history = history
+                st.session_state.context_pack = context_pack or ""
+                st.session_state.uploaded_fingerprints = set()  # avoid weird double-add after load
+                st.rerun()
 
-            # Images
-            if ext in ("png", "jpg", "jpeg", "webp"):
-                # preview
-                try:
-                    img = Image.open(BytesIO(bytes_data))
-                    st.image(img, caption=name, use_container_width=True)
-                except Exception:
-                    pass
-
-                # analyze image (Gemini)
-                try:
-                    mime = f.type or "image/png"
-                    analysis = analyze_image_with_gemini(primary_model, bytes_data, mime)
-                    if analysis:
-                        st.session_state.context_pack += f"\n\n[Image: {name}]\n{analysis}"
-                        added_any = True
-                except Exception as e:
-                    st.warning(f"Couldn’t analyze image {name} ({type(e).__name__}).")
-
-            # Documents
-            else:
-                extracted = ""
-                try:
-                    if ext == "txt":
-                        extracted = extract_text_from_txt(bytes_data)
-                    elif ext == "docx":
-                        extracted = extract_text_from_docx(bytes_data)
-                    elif ext == "pdf":
-                        extracted = extract_text_from_pdf(bytes_data)
-                except Exception as e:
-                    st.warning(f"Couldn’t read {name} ({type(e).__name__}).")
-
-                extracted = (extracted or "").strip()
-                if extracted:
-                    # keep it from exploding context (basic limit)
-                    MAX_CHARS = 20000
-                    if len(extracted) > MAX_CHARS:
-                        extracted = extracted[:MAX_CHARS] + "\n\n[Truncated]"
-                    st.session_state.context_pack += f"\n\n[File: {name}]\n{extracted}"
-                    added_any = True
-
-        if added_any:
-            save_chat(st.session_state.chat_id, st.session_state.chat_name, st.session_state.chat_history, st.session_state.context_pack)
-            st.success("Added to chat context ✅")
+    st.divider()
+    st.caption("Uploads live inside each chat. They won’t clear unless you explicitly tell MuseMate to clear them.")
 
 
 # --------------------
-# UI
+# Main UI
 # --------------------
 st.title("MuseMate 🎨🤖")
-st.caption("Upload files/images, then ask questions about them.")
+st.caption("Upload files/images near the input, then ask questions about them.")
+
 
 # Display chat messages
 for msg in st.session_state.chat_history:
@@ -374,12 +335,8 @@ for msg in st.session_state.chat_history:
 
 
 def build_messages_for_model():
-    """
-    Inject file/image context as a hidden SystemMessage so user can ask questions about uploads.
-    """
     history = list(st.session_state.chat_history)
-
-    ctx = (st.session_state.get("context_pack") or "").strip()
+    ctx = (st.session_state.context_pack or "").strip()
     if ctx:
         ctx_msg = SystemMessage(
             content=(
@@ -388,16 +345,115 @@ def build_messages_for_model():
                 f"{ctx}"
             )
         )
-        # Insert right after the first SystemMessage if present
         if history and isinstance(history[0], SystemMessage):
             return [history[0], ctx_msg] + history[1:]
         return [ctx_msg] + history
-
     return history
 
 
-# User input
+# --------------------
+# Upload area near input (NOT sidebar)
+# --------------------
+with st.container():
+    upload_col, info_col = st.columns([1, 2], vertical_alignment="center")
+
+    with upload_col:
+        uploads = st.file_uploader(
+            "📎 Attach",
+            type=["pdf", "txt", "docx", "png", "jpg", "jpeg", "webp"],
+            accept_multiple_files=True,
+            label_visibility="collapsed",
+        )
+
+    with info_col:
+        if (st.session_state.context_pack or "").strip():
+            st.markdown("**Attachments loaded for this chat ✅**")
+        else:
+            st.markdown("**No attachments loaded yet.**")
+
+# Process uploads (only new ones)
+if uploads:
+    added_any = False
+
+    for f in uploads:
+        name = f.name
+        file_bytes = f.getvalue()
+        ext = name.lower().split(".")[-1]
+        fp = fingerprint_file(name, file_bytes)
+
+        if fp in st.session_state.uploaded_fingerprints:
+            continue  # already processed
+        st.session_state.uploaded_fingerprints.add(fp)
+
+        # Images
+        if ext in ("png", "jpg", "jpeg", "webp"):
+            # optional preview
+            try:
+                img = Image.open(BytesIO(file_bytes))
+                st.image(img, caption=name, use_container_width=True)
+            except Exception:
+                pass
+
+            try:
+                mime = f.type or "image/png"
+                analysis = analyze_image_with_gemini(primary_model, file_bytes, mime)
+                if analysis:
+                    st.session_state.context_pack += f"\n\n[Image: {name}]\n{analysis}"
+                    added_any = True
+            except Exception as e:
+                st.warning(f"Couldn’t analyze image {name} ({type(e).__name__}).")
+
+        # Docs
+        else:
+            extracted = ""
+            try:
+                if ext == "txt":
+                    extracted = extract_text_from_txt(file_bytes)
+                elif ext == "docx":
+                    extracted = extract_text_from_docx(file_bytes)
+                elif ext == "pdf":
+                    extracted = extract_text_from_pdf(file_bytes)
+            except Exception as e:
+                st.warning(f"Couldn’t read {name} ({type(e).__name__}).")
+
+            extracted = (extracted or "").strip()
+            if extracted:
+                MAX_CHARS = 20000
+                if len(extracted) > MAX_CHARS:
+                    extracted = extracted[:MAX_CHARS] + "\n\n[Truncated]"
+                st.session_state.context_pack += f"\n\n[File: {name}]\n{extracted}"
+                added_any = True
+
+    if added_any and st.session_state.autosave:
+        save_chat(
+            st.session_state.chat_id,
+            st.session_state.chat_name,
+            st.session_state.chat_history,
+            st.session_state.context_pack,
+        )
+        st.toast("Attached to this chat ✅")
+
+
+# --------------------
+# Chat input
+# --------------------
 if prompt := st.chat_input("Type your message... 💬"):
+    # Clear uploads ONLY if user explicitly tells the assistant
+    if user_requested_clear(prompt):
+        st.session_state.context_pack = ""
+        st.session_state.uploaded_fingerprints = set()
+        st.session_state.chat_history.append(HumanMessage(content=prompt))
+        st.session_state.chat_history.append(AIMessage(content="Got it — I cleared the attachments for this chat."))
+        if st.session_state.autosave:
+            save_chat(
+                st.session_state.chat_id,
+                st.session_state.chat_name,
+                st.session_state.chat_history,
+                st.session_state.context_pack,
+            )
+        st.rerun()
+
+    # Normal flow
     st.session_state.chat_history.append(HumanMessage(content=prompt))
 
     with st.chat_message("user"):
@@ -411,6 +467,10 @@ if prompt := st.chat_input("Type your message... 💬"):
 
     st.session_state.chat_history.append(AIMessage(content=result.content))
 
-    # auto-save
-    if st.session_state.get("autosave", True):
-        save_chat(st.session_state.chat_id, st.session_state.chat_name, st.session_state.chat_history, st.session_state.get("context_pack", ""))
+    if st.session_state.autosave:
+        save_chat(
+            st.session_state.chat_id,
+            st.session_state.chat_name,
+            st.session_state.chat_history,
+            st.session_state.context_pack,
+        )
