@@ -19,7 +19,125 @@ from PIL import Image
 # --------------------
 # Page Config
 # --------------------
-st.set_page_config(page_title="MuseMate 🎨🤖", page_icon="🤖", layout="centered")
+st.set_page_config(page_title="MuseMate 🎨🤖", page_icon="🤖", layout="wide")
+
+
+# --------------------
+# MODERN UI STYLING
+# --------------------
+st.markdown("""
+<style>
+    /* Main app background */
+    .stApp {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    /* Chat message bubbles */
+    .user-message {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 12px 18px;
+        border-radius: 18px 18px 4px 18px;
+        margin: 10px 0;
+        max-width: 70%;
+        float: right;
+        clear: both;
+        word-wrap: break-word;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .bot-message {
+        background: #ffffff;
+        color: #333;
+        padding: 12px 18px;
+        border-radius: 18px 18px 18px 4px;
+        margin: 10px 0;
+        max-width: 70%;
+        float: left;
+        clear: both;
+        word-wrap: break-word;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    /* Sidebar styling */
+    section[data-testid="stSidebar"] {
+        background: rgba(255, 255, 255, 0.95) !important;
+        backdrop-filter: blur(10px);
+    }
+    
+    /* Chat button styling in sidebar */
+    section[data-testid="stSidebar"] .stButton > button {
+        background: white;
+        color: #333;
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 12px 16px;
+        font-weight: 500;
+        transition: all 0.3s;
+        text-align: left;
+        white-space: normal;
+        word-wrap: break-word;
+    }
+    
+    section[data-testid="stSidebar"] .stButton > button:hover {
+        background: #f8f9fa;
+        border-color: #667eea;
+        transform: translateX(4px);
+    }
+    
+    /* Active chat indicator */
+    section[data-testid="stSidebar"] .stButton > button:contains("✅") {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-color: transparent;
+    }
+    
+    /* Main action buttons */
+    .stButton > button {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 25px;
+        padding: 10px 30px;
+        font-weight: 600;
+        transition: all 0.3s;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    }
+    
+    /* File uploader styling */
+    .uploadedFile {
+        border-radius: 12px;
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(10px);
+        border: 2px solid #e0e0e0;
+    }
+    
+    /* Hide default streamlit branding */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    
+    /* Chat container */
+    .element-container {
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 15px;
+        padding: 15px;
+        margin: 10px 0;
+    }
+    
+    /* Input area */
+    .stChatInputContainer {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border-radius: 25px;
+        padding: 10px;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 
 # --------------------
@@ -112,6 +230,29 @@ def list_chats_newest_first():
     return items
 
 
+# --------------------
+# GENERATE CHAT SUMMARY (NEW FEATURE)
+# --------------------
+def generate_chat_summary(history):
+    """Generate a brief summary from the first user message"""
+    for msg in history:
+        if isinstance(msg, HumanMessage):
+            content = msg.content.strip()
+            if len(content) > 50:
+                return content[:50] + "..."
+            return content
+    return "New Chat"
+
+
+def format_timestamp(iso_str: str) -> str:
+    """Format timestamp nicely"""
+    try:
+        dt = datetime.fromisoformat(iso_str)
+        return dt.strftime("%b %d, %I:%M %p")
+    except:
+        return ""
+
+
 DEFAULT_SYSTEM = "You are MuseMate 🎨🤖 a friendly, playful, and creative AI assistant."
 
 
@@ -128,7 +269,7 @@ def new_chat():
     st.session_state.chat_name = display_name
     st.session_state.chat_history = [SystemMessage(content=DEFAULT_SYSTEM)]
 
-    # Persisted “attachments context” for this chat
+    # Persisted "attachments context" for this chat
     st.session_state.context_pack = ""
     st.session_state.uploaded_fingerprints = set()
 
@@ -281,14 +422,14 @@ except Exception as e:
 
 
 # --------------------
-# Sidebar: stacked chat buttons
+# IMPROVED SIDEBAR: Summarized chat history with timestamps
 # --------------------
 with st.sidebar:
-    st.subheader("💬 Chats")
+    st.markdown("### 💬 Chat History")
 
     top_row = st.columns([1, 1])
     with top_row[0]:
-        if st.button("➕ New", use_container_width=True):
+        if st.button("➕ New", use_container_width=True, key="new_chat_btn"):
             new_chat()
             st.rerun()
     with top_row[1]:
@@ -298,40 +439,62 @@ with st.sidebar:
 
     chats = list_chats_newest_first()
 
-    # Stacked clickable chats (newest at top)
-    for cid, name, updated_at in chats:
-        is_current = (cid == st.session_state.chat_id)
-        label = f"✅ {name}" if is_current else name
+    if chats:
+        st.markdown("**Recent Conversations**")
+        # Display chats with summaries and timestamps
+        for cid, name, updated_at in chats:
+            is_current = (cid == st.session_state.chat_id)
+            
+            # Load chat to get summary
+            try:
+                _, history, _ = load_chat(cid)
+                summary = generate_chat_summary(history)
+                timestamp = format_timestamp(updated_at)
+            except:
+                summary = name
+                timestamp = ""
+            
+            # Create button label with summary and timestamp
+            if is_current:
+                label = f"✅ {summary}\n📅 {timestamp}"
+            else:
+                label = f"{summary}\n📅 {timestamp}"
 
-        if st.button(label, key=f"chatbtn_{cid}", use_container_width=True):
-            if cid != st.session_state.chat_id:
-                chat_name, history, context_pack = load_chat(cid)
-                st.session_state.chat_id = cid
-                st.session_state.chat_name = chat_name
-                st.session_state.chat_history = history
-                st.session_state.context_pack = context_pack or ""
-                st.session_state.uploaded_fingerprints = set()  # avoid weird double-add after load
-                st.rerun()
+            if st.button(label, key=f"chatbtn_{cid}", use_container_width=True):
+                if cid != st.session_state.chat_id:
+                    chat_name, history, context_pack = load_chat(cid)
+                    st.session_state.chat_id = cid
+                    st.session_state.chat_name = chat_name
+                    st.session_state.chat_history = history
+                    st.session_state.context_pack = context_pack or ""
+                    st.session_state.uploaded_fingerprints = set()
+                    st.rerun()
+    else:
+        st.info("No chats yet. Click **New** to start!")
 
     st.divider()
-    st.caption("Uploads live inside each chat. They won’t clear unless you explicitly tell MuseMate to clear them.")
+    
+    st.markdown("### 🎨 About MuseMate")
+    st.caption("Powered by Gemini 2.5 Flash + OpenRouter fallback")
+    st.caption("📎 Uploads stay within each chat")
+    st.caption("💬 Type 'clear uploads' to remove attachments")
 
 
 # --------------------
 # Main UI
 # --------------------
-st.title("MuseMate 🎨🤖")
-st.caption("Upload files/images near the input, then ask questions about them.")
+st.title("🎨🤖 MuseMate")
+st.caption("Your Friendly & Creative AI Chat Companion")
 
 
-# Display chat messages
+# Display chat messages with modern bubble styling
 for msg in st.session_state.chat_history:
     if isinstance(msg, HumanMessage):
         with st.chat_message("user"):
-            st.markdown(msg.content)
+            st.markdown(f'<div class="user-message">{msg.content}</div>', unsafe_allow_html=True)
     elif isinstance(msg, AIMessage):
         with st.chat_message("assistant"):
-            st.markdown(msg.content)
+            st.markdown(f'<div class="bot-message">{msg.content}</div>', unsafe_allow_html=True)
 
 
 def build_messages_for_model():
@@ -352,24 +515,27 @@ def build_messages_for_model():
 
 
 # --------------------
-# Upload area near input (NOT sidebar)
+# IMPROVED FILE UPLOAD: Plus icon next to input
 # --------------------
-with st.container():
-    upload_col, info_col = st.columns([1, 2], vertical_alignment="center")
+st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
 
-    with upload_col:
-        uploads = st.file_uploader(
-            "📎 Attach",
-            type=["pdf", "txt", "docx", "png", "jpg", "jpeg", "webp"],
-            accept_multiple_files=True,
-            label_visibility="collapsed",
-        )
+upload_col, status_col = st.columns([1, 3])
 
-    with info_col:
-        if (st.session_state.context_pack or "").strip():
-            st.markdown("**Attachments loaded for this chat ✅**")
-        else:
-            st.markdown("**No attachments loaded yet.**")
+with upload_col:
+    uploads = st.file_uploader(
+        "📎",
+        type=["pdf", "txt", "docx", "png", "jpg", "jpeg", "webp"],
+        accept_multiple_files=True,
+        label_visibility="collapsed",
+        key="file_upload"
+    )
+
+with status_col:
+    if (st.session_state.context_pack or "").strip():
+        st.success("✅ Attachments loaded for this chat")
+    else:
+        st.info("📎 No attachments yet - upload files to analyze")
+
 
 # Process uploads (only new ones)
 if uploads:
@@ -396,12 +562,13 @@ if uploads:
 
             try:
                 mime = f.type or "image/png"
-                analysis = analyze_image_with_gemini(primary_model, file_bytes, mime)
+                with st.spinner(f"Analyzing {name}..."):
+                    analysis = analyze_image_with_gemini(primary_model, file_bytes, mime)
                 if analysis:
                     st.session_state.context_pack += f"\n\n[Image: {name}]\n{analysis}"
                     added_any = True
             except Exception as e:
-                st.warning(f"Couldn’t analyze image {name} ({type(e).__name__}).")
+                st.warning(f"Couldn't analyze image {name} ({type(e).__name__}).")
 
         # Docs
         else:
@@ -414,7 +581,7 @@ if uploads:
                 elif ext == "pdf":
                     extracted = extract_text_from_pdf(file_bytes)
             except Exception as e:
-                st.warning(f"Couldn’t read {name} ({type(e).__name__}).")
+                st.warning(f"Couldn't read {name} ({type(e).__name__}).")
 
             extracted = (extracted or "").strip()
             if extracted:
@@ -431,7 +598,7 @@ if uploads:
             st.session_state.chat_history,
             st.session_state.context_pack,
         )
-        st.toast("Attached to this chat ✅")
+        st.toast("✅ Files attached to this chat!")
 
 
 # --------------------
@@ -457,13 +624,13 @@ if prompt := st.chat_input("Type your message... 💬"):
     st.session_state.chat_history.append(HumanMessage(content=prompt))
 
     with st.chat_message("user"):
-        st.markdown(prompt)
+        st.markdown(f'<div class="user-message">{prompt}</div>', unsafe_allow_html=True)
 
     with st.chat_message("assistant"):
         with st.spinner("MuseMate is thinking... 🤔"):
             model_messages = build_messages_for_model()
             result = invoke_with_fallback(primary_model, fallback_model_obj, model_messages)
-            st.markdown(result.content)
+            st.markdown(f'<div class="bot-message">{result.content}</div>', unsafe_allow_html=True)
 
     st.session_state.chat_history.append(AIMessage(content=result.content))
 
@@ -474,4 +641,3 @@ if prompt := st.chat_input("Type your message... 💬"):
             st.session_state.chat_history,
             st.session_state.context_pack,
         )
-
