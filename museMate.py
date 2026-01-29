@@ -1,6 +1,5 @@
 import os
 import json
-import time
 import base64
 import hashlib
 from io import BytesIO
@@ -15,11 +14,66 @@ from docx import Document
 from pypdf import PdfReader
 from PIL import Image
 
+# --------------------
+# Page Config & Custom CSS
+# --------------------
+st.set_page_config(
+    page_title="MuseMate 🎨🤖",
+    page_icon="🤖",
+    layout="wide",  # Wider layout looks better on modern screens
+    initial_sidebar_state="expanded"
+)
 
-# --------------------
-# Page Config
-# --------------------
-st.set_page_config(page_title="MuseMate 🎨🤖", page_icon="🤖", layout="centered")
+# Custom CSS for Dark Mode and UI Polish
+st.markdown("""
+<style>
+    /* Main container adjustments */
+    .main .block-container {
+        padding-top: 1.5rem;
+        padding-bottom: 5rem;
+        max-width: 900px;
+    }
+
+    /* Hide default Streamlit footer/menu */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+        width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+        background: #1e1e1e; 
+    }
+    ::-webkit-scrollbar-thumb {
+        background: #4a4a4a; 
+        border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: #666; 
+    }
+
+    /* Chat Message Styling tweaks */
+    .stChatMessage {
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+    }
+    
+    /* Make the status info smaller */
+    .small-font {
+        font-size: 0.85rem;
+        color: #aaa;
+    }
+
+    /* Style the file uploader expander */
+    streamlit-expanderHeader {
+        font-size: 0.9rem;
+        font-weight: 600;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 
 # --------------------
@@ -127,8 +181,6 @@ def new_chat():
     st.session_state.chat_id = chat_id
     st.session_state.chat_name = display_name
     st.session_state.chat_history = [SystemMessage(content=DEFAULT_SYSTEM)]
-
-    # Persisted “attachments context” for this chat
     st.session_state.context_pack = ""
     st.session_state.uploaded_fingerprints = set()
 
@@ -227,34 +279,12 @@ def analyze_image_with_gemini(primary_llm, file_bytes: bytes, mime: str) -> str:
 def fingerprint_file(name: str, file_bytes: bytes) -> str:
     h = hashlib.sha256()
     h.update(name.encode("utf-8", errors="ignore"))
-    h.update(file_bytes[:200000])  # enough to be stable + fast
+    h.update(file_bytes[:200000])
     return h.hexdigest()
 
 
 # --------------------
-# Explicit clear detection (ONLY if user directly asks)
-# --------------------
-CLEAR_PHRASES = {
-    "clear attachments",
-    "clear uploads",
-    "forget uploads",
-    "forget the uploads",
-    "forget attachments",
-    "remove uploaded files",
-    "remove uploads",
-    "delete uploads",
-    "/clear uploads",
-    "/clear attachments",
-}
-
-
-def user_requested_clear(text: str) -> bool:
-    t = (text or "").strip().lower()
-    return t in CLEAR_PHRASES
-
-
-# --------------------
-# Session init
+# Session Init
 # --------------------
 if "chat_id" not in st.session_state:
     new_chat()
@@ -270,7 +300,7 @@ if "context_pack" not in st.session_state:
 
 
 # --------------------
-# Load models
+# Load Models
 # --------------------
 gemini_key, openrouter_key, fallback_model, site_url, app_name = get_secrets()
 try:
@@ -281,59 +311,86 @@ except Exception as e:
 
 
 # --------------------
-# Sidebar: stacked chat buttons
+# Sidebar: Improved
 # --------------------
 with st.sidebar:
-    st.subheader("💬 Chats")
-
-    top_row = st.columns([1, 1])
-    with top_row[0]:
-        if st.button("➕ New", use_container_width=True):
+    # Header
+    st.markdown("### MuseMate 🎨🤖")
+    st.markdown("---")
+    
+    # Controls
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("➕ New Chat", use_container_width=True, type="primary"):
             new_chat()
             st.rerun()
-    with top_row[1]:
+    with col2:
         st.session_state.autosave = st.toggle("Auto-save", value=st.session_state.autosave)
 
-    st.divider()
-
+    st.markdown("### History")
+    
     chats = list_chats_newest_first()
-
-    # Stacked clickable chats (newest at top)
-    for cid, name, updated_at in chats:
-        is_current = (cid == st.session_state.chat_id)
-        label = f"✅ {name}" if is_current else name
-
-        if st.button(label, key=f"chatbtn_{cid}", use_container_width=True):
-            if cid != st.session_state.chat_id:
-                chat_name, history, context_pack = load_chat(cid)
-                st.session_state.chat_id = cid
-                st.session_state.chat_name = chat_name
-                st.session_state.chat_history = history
-                st.session_state.context_pack = context_pack or ""
-                st.session_state.uploaded_fingerprints = set()  # avoid weird double-add after load
-                st.rerun()
-
+    
+    # Chat List Container
+    with st.container():
+        for cid, name, updated_at in chats:
+            is_current = (cid == st.session_state.chat_id)
+            
+            # Logic for cleaner labels
+            if is_current:
+                label = f"**{name}** ✅"
+                bg_color = "rgba(255, 255, 255, 0.1)"
+            else:
+                label = f"{name}"
+                bg_color = "transparent"
+            
+            # Create a container for each chat to apply custom styles
+            c = st.container()
+            c.markdown(
+                f"""
+                <div style="background-color: {bg_color}; padding: 8px; border-radius: 6px; margin-bottom: 5px;">
+                    {label}
+                </div>
+                """, 
+                unsafe_allow_html=True
+            )
+            
+            # Invisible button overlay to capture clicks
+            if c.button(label, key=f"chatbtn_{cid}", use_container_width=True):
+                if cid != st.session_state.chat_id:
+                    chat_name, history, context_pack = load_chat(cid)
+                    st.session_state.chat_id = cid
+                    st.session_state.chat_name = chat_name
+                    st.session_state.chat_history = history
+                    st.session_state.context_pack = context_pack or ""
+                    st.session_state.uploaded_fingerprints = set()
+                    st.rerun()
+                    
     st.divider()
-    st.caption("Uploads live inside each chat. They won’t clear unless you explicitly tell MuseMate to clear them.")
+    st.caption("MuseMate keeps your context attached to specific chats.")
 
 
 # --------------------
-# Main UI
+# Main Chat Area
 # --------------------
-st.title("MuseMate 🎨🤖")
-st.caption("Upload files/images near the input, then ask questions about them.")
 
+# Title
+st.markdown(f"<h2 style='text-align: center;'>{st.session_state.chat_name}</h2>", unsafe_allow_html=True)
 
-# Display chat messages
+# Display Chat History
 for msg in st.session_state.chat_history:
     if isinstance(msg, HumanMessage):
-        with st.chat_message("user"):
+        with st.chat_message("user", avatar="👤"):
             st.markdown(msg.content)
     elif isinstance(msg, AIMessage):
-        with st.chat_message("assistant"):
+        with st.chat_message("assistant", avatar="🤖"):
             st.markdown(msg.content)
 
+# --------------------
+# Input & Tools Area (Bottom)
+# --------------------
 
+# Helper to build messages
 def build_messages_for_model():
     history = list(st.session_state.chat_history)
     ctx = (st.session_state.context_pack or "").strip()
@@ -350,100 +407,115 @@ def build_messages_for_model():
         return [ctx_msg] + history
     return history
 
-
-# --------------------
-# Upload area near input (NOT sidebar)
-# --------------------
+# Container for inputs at the bottom
 with st.container():
-    upload_col, info_col = st.columns([1, 2], vertical_alignment="center")
+    
+    # 1. Context Indicator (Top of input area)
+    if st.session_state.context_pack:
+        # Calculate rough number of files attached based on simple parsing of context string
+        # (Just a heuristic for visual feedback)
+        file_count = st.session_state.context_pack.count("[File:") + st.session_state.context_pack.count("[Image:")
+        st.info(f"📎 Context Active: {file_count} item(s) attached to this chat.", icon="✅")
+    
+    # 2. Expander for Tools (Uploads)
+    with st.expander("🛠️ Tools & Attachments", expanded=False):
+        col_a, col_b = st.columns([2, 1])
+        
+        with col_a:
+            uploads = st.file_uploader(
+                "Add files to context",
+                type=["pdf", "txt", "docx", "png", "jpg", "jpeg", "webp"],
+                accept_multiple_files=True,
+                label_visibility="collapsed",
+                key="main_uploader"
+            )
+            
+        with col_b:
+            # Manual clear button
+            if st.button("🗑️ Clear All", use_container_width=True):
+                st.session_state.context_pack = ""
+                st.session_state.uploaded_fingerprints = set()
+                st.toast("Context cleared.")
+                st.rerun()
 
-    with upload_col:
-        uploads = st.file_uploader(
-            "📎 Attach",
-            type=["pdf", "txt", "docx", "png", "jpg", "jpeg", "webp"],
-            accept_multiple_files=True,
-            label_visibility="collapsed",
-        )
+        # Process uploads logic
+        if uploads:
+            added_any = False
+            for f in uploads:
+                name = f.name
+                file_bytes = f.getvalue()
+                ext = name.lower().split(".")[-1]
+                fp = fingerprint_file(name, file_bytes)
 
-    with info_col:
-        if (st.session_state.context_pack or "").strip():
-            st.markdown("**Attachments loaded for this chat ✅**")
-        else:
-            st.markdown("**No attachments loaded yet.**")
+                if fp in st.session_state.uploaded_fingerprints:
+                    continue
+                st.session_state.uploaded_fingerprints.add(fp)
 
-# Process uploads (only new ones)
-if uploads:
-    added_any = False
+                # Handle Images
+                if ext in ("png", "jpg", "jpeg", "webp"):
+                    try:
+                        img = Image.open(BytesIO(file_bytes))
+                        st.image(img, caption=f"Attached: {name}", width=200)
+                    except Exception:
+                        pass
 
-    for f in uploads:
-        name = f.name
-        file_bytes = f.getvalue()
-        ext = name.lower().split(".")[-1]
-        fp = fingerprint_file(name, file_bytes)
+                    try:
+                        mime = f.type or "image/png"
+                        analysis = analyze_image_with_gemini(primary_model, file_bytes, mime)
+                        if analysis:
+                            st.session_state.context_pack += f"\n\n[Image: {name}]\n{analysis}"
+                            added_any = True
+                    except Exception as e:
+                        st.warning(f"Image analysis failed: {e}")
 
-        if fp in st.session_state.uploaded_fingerprints:
-            continue  # already processed
-        st.session_state.uploaded_fingerprints.add(fp)
+                # Handle Docs
+                else:
+                    extracted = ""
+                    try:
+                        if ext == "txt":
+                            extracted = extract_text_from_txt(file_bytes)
+                        elif ext == "docx":
+                            extracted = extract_text_from_docx(file_bytes)
+                        elif ext == "pdf":
+                            extracted = extract_text_from_pdf(file_bytes)
+                    except Exception as e:
+                        st.warning(f"Read error for {name}: {e}")
 
-        # Images
-        if ext in ("png", "jpg", "jpeg", "webp"):
-            # optional preview
-            try:
-                img = Image.open(BytesIO(file_bytes))
-                st.image(img, caption=name, use_container_width=True)
-            except Exception:
-                pass
+                    extracted = (extracted or "").strip()
+                    if extracted:
+                        MAX_CHARS = 20000
+                        if len(extracted) > MAX_CHARS:
+                            extracted = extracted[:MAX_CHARS] + "\n\n[Truncated]"
+                        st.session_state.context_pack += f"\n\n[File: {name}]\n{extracted}"
+                        added_any = True
 
-            try:
-                mime = f.type or "image/png"
-                analysis = analyze_image_with_gemini(primary_model, file_bytes, mime)
-                if analysis:
-                    st.session_state.context_pack += f"\n\n[Image: {name}]\n{analysis}"
-                    added_any = True
-            except Exception as e:
-                st.warning(f"Couldn’t analyze image {name} ({type(e).__name__}).")
+            if added_any:
+                st.toast("Files processed and added to context! ✅")
+                if st.session_state.autosave:
+                    save_chat(
+                        st.session_state.chat_id,
+                        st.session_state.chat_name,
+                        st.session_state.chat_history,
+                        st.session_state.context_pack,
+                    )
+                # Rerun to update the context indicator immediately
+                st.rerun()
 
-        # Docs
-        else:
-            extracted = ""
-            try:
-                if ext == "txt":
-                    extracted = extract_text_from_txt(file_bytes)
-                elif ext == "docx":
-                    extracted = extract_text_from_docx(file_bytes)
-                elif ext == "pdf":
-                    extracted = extract_text_from_pdf(file_bytes)
-            except Exception as e:
-                st.warning(f"Couldn’t read {name} ({type(e).__name__}).")
-
-            extracted = (extracted or "").strip()
-            if extracted:
-                MAX_CHARS = 20000
-                if len(extracted) > MAX_CHARS:
-                    extracted = extracted[:MAX_CHARS] + "\n\n[Truncated]"
-                st.session_state.context_pack += f"\n\n[File: {name}]\n{extracted}"
-                added_any = True
-
-    if added_any and st.session_state.autosave:
-        save_chat(
-            st.session_state.chat_id,
-            st.session_state.chat_name,
-            st.session_state.chat_history,
-            st.session_state.context_pack,
-        )
-        st.toast("Attached to this chat ✅")
-
-
-# --------------------
-# Chat input
-# --------------------
-if prompt := st.chat_input("Type your message... 💬"):
-    # Clear uploads ONLY if user explicitly tells the assistant
-    if user_requested_clear(prompt):
-        st.session_state.context_pack = ""
-        st.session_state.uploaded_fingerprints = set()
+    # 3. Chat Input
+    if prompt := st.chat_input("Message MuseMate... 💬"):
         st.session_state.chat_history.append(HumanMessage(content=prompt))
-        st.session_state.chat_history.append(AIMessage(content="Got it — I cleared the attachments for this chat."))
+
+        with st.chat_message("user", avatar="👤"):
+            st.markdown(prompt)
+
+        with st.chat_message("assistant", avatar="🤖"):
+            with st.spinner("Thinking..."):
+                model_messages = build_messages_for_model()
+                result = invoke_with_fallback(primary_model, fallback_model_obj, model_messages)
+                st.markdown(result.content)
+
+        st.session_state.chat_history.append(AIMessage(content=result.content))
+
         if st.session_state.autosave:
             save_chat(
                 st.session_state.chat_id,
@@ -451,26 +523,3 @@ if prompt := st.chat_input("Type your message... 💬"):
                 st.session_state.chat_history,
                 st.session_state.context_pack,
             )
-        st.rerun()
-
-    # Normal flow
-    st.session_state.chat_history.append(HumanMessage(content=prompt))
-
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    with st.chat_message("assistant"):
-        with st.spinner("MuseMate is thinking... 🤔"):
-            model_messages = build_messages_for_model()
-            result = invoke_with_fallback(primary_model, fallback_model_obj, model_messages)
-            st.markdown(result.content)
-
-    st.session_state.chat_history.append(AIMessage(content=result.content))
-
-    if st.session_state.autosave:
-        save_chat(
-            st.session_state.chat_id,
-            st.session_state.chat_name,
-            st.session_state.chat_history,
-            st.session_state.context_pack,
-        )
